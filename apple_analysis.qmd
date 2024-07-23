@@ -1,0 +1,413 @@
+---
+title: "apple morphometric analysis"
+format: 
+  html:
+    fig-format: pdf 
+editor: visual
+editor_options:
+  chunk_output_type: console
+---
+
+<!-- Preliminary modules, libraries and functions for the rest of the code to function -->
+
+```{r}
+#| label: R Libraries
+#| echo: false
+#########################
+### LOAD IN LIBRARIES ###
+#########################
+
+# python libraries that will be used in the python sections
+# test to make sure these will load
+library(reticulate)
+#py_install("opencv-python")
+#py_install("scikit-learn")
+#py_install("matplotlib")
+#py_install("pandas")
+#py_install("numpy")
+#py_install("seaborn")
+
+# other r libraries
+library(tidyverse) # used for ggplot2
+```
+
+```{python}
+#| label: Python Libraries
+#| echo: false
+#######################
+### LOAD IN MODULES ###
+#######################
+
+import cv2 # to install on mac: pip install opencv-python
+from scipy.interpolate import interp1d # for interpolating points
+from sklearn.decomposition import PCA # for principal component analysis
+from scipy.spatial import procrustes # for Procrustes analysis
+from scipy.spatial import ConvexHull # for convex hull
+from sklearn.discriminant_analysis import LinearDiscriminantAnalysis # for LDA
+from sklearn.metrics import confusion_matrix # for confusion matrix
+from os import listdir # for retrieving files from directory
+from os.path import isfile, join # for retrieving files from directory
+import matplotlib.pyplot as plt # for plotting
+import numpy as np # for using arrays
+import math # for mathematical operations
+import pandas as pd # for using pandas dataframes
+import seaborn as sns # for plotting in seaborn
+from matplotlib.colors import LogNorm
+```
+
+```{python}
+#| label: Python Functions
+#| echo: false
+#################
+### FUNCTIONS ###
+#################
+
+def angle_between(p1, p2, p3):
+    """
+    define a function to find the angle between 3 points anti-clockwise in degrees, p2 being the vertex
+    inputs: three angle points, as tuples
+    output: angle in degrees
+    """
+    x1, y1 = p1
+    x2, y2 = p2
+    x3, y3 = p3
+    deg1 = (360 + math.degrees(math.atan2(x1 - x2, y1 - y2))) % 360
+    deg2 = (360 + math.degrees(math.atan2(x3 - x2, y3 - y2))) % 360
+    return deg2 - deg1 if deg1 <= deg2 else 360 - (deg1 - deg2)
+
+def rotate_points(xvals, yvals, degrees):
+    """"
+    define a function to rotate 2D x and y coordinate points around the origin
+    inputs: x and y vals (can take pandas dataframe columns) and the degrees (positive, anticlockwise) to rotate
+    outputs: rotated and y vals
+    """
+    angle_to_move = 90-degrees
+    rads = np.deg2rad(angle_to_move)
+    
+    new_xvals = xvals*np.cos(rads)-yvals*np.sin(rads)
+    new_yvals = xvals*np.sin(rads)+yvals*np.cos(rads)
+    
+    return new_xvals, new_yvals
+
+def interpolation(x, y, number): 
+    """
+    define a function to return equally spaced, interpolated points for a given polyline
+    inputs: arrays of x and y values for a polyline, number of points to interpolate
+    ouputs: interpolated points along the polyline, inclusive of start and end points
+    """
+    distance = np.cumsum(np.sqrt( np.ediff1d(x, to_begin=0)**2 + np.ediff1d(y, to_begin=0)**2 ))
+    distance = distance/distance[-1]
+
+    fx, fy = interp1d( distance, x ), interp1d( distance, y )
+
+    alpha = np.linspace(0, 1, number)
+    x_regular, y_regular = fx(alpha), fy(alpha)
+    
+    return x_regular, y_regular
+
+def euclid_dist(x1, y1, x2, y2):
+    """
+    define a function to return the euclidean distance between two points
+    inputs: x and y values of the two points
+    output: the eulidean distance
+    """
+    return np.sqrt((x2-x1)**2 + (y2-y1)**2)
+
+def poly_area(x,y):
+    """
+    define a function to calculate the area of a polygon using the shoelace algorithm
+    inputs: separate numpy arrays of x and y coordinate values
+    outputs: the area of the polygon
+    """
+    return 0.5*np.abs(np.dot(x,np.roll(y,1))-np.dot(y,np.roll(x,1)))
+
+def gpa_mean(leaf_arr, landmark_num, dim_num):
+    
+    """
+    define a function that given an array of landmark data returns the Generalized Procrustes Analysis mean
+    inputs: a 3 dimensional array of samples by landmarks by coordinate values, number of landmarks, number of dimensions
+    output: an array of the Generalized Procrustes Analysis mean shape
+    
+    """
+
+    ref_ind = 0 # select arbitrary reference index to calculate procrustes distances to
+    ref_shape = leaf_arr[ref_ind, :, :] # select the reference shape
+
+    mean_diff = 10**(-30) # set a distance between means to stop the algorithm
+
+    old_mean = ref_shape # for the first comparison between means, set old_mean to an arbitrary reference shape
+
+    d = 1000000 # set d initially arbitraily high
+
+    while d > mean_diff: # set boolean criterion for Procrustes distance between mean to stop calculations
+
+        arr = np.zeros( ((len(leaf_arr)),landmark_num,dim_num) ) # empty 3D array: # samples, landmarks, coord vals
+
+        for i in range(len(leaf_arr)): # for each leaf shape 
+
+            s1, s2, distance = procrustes(old_mean, leaf_arr[i]) # calculate procrustes adjusted shape to ref for current leaf
+            arr[i] = s2 # store procrustes adjusted shape to array
+
+        new_mean = np.mean(arr, axis=(0)) # calculate mean of all shapes adjusted to reference
+
+        s1, s2, d = procrustes(old_mean, new_mean) # calculate procrustes distance of new mean to old mean
+
+        old_mean = new_mean # set the old_mean to the new_mea before beginning another iteration
+
+    return new_mean
+```
+
+<!-- Following sections are from the domestic apples. Reads data and does the preliminary image analysis -->
+
+### Domestic Apple Data
+
+#### Metadata Listing
+
+```{python}
+#| label: Domestic Apple Metadata
+########################
+### READ IN METADATA ###
+########################
+
+# CHANGE TO CORRECT DIRECTORY
+mdata = pd.read_csv("C:/Users/User/Desktop/COOP02/code/apple_shape/apple_metadata.csv") # read in csv
+
+mdata.head() # head data to check
+```
+
+```{python}
+#| label: Domestic Apple List
+#######################################
+### MAKE A LIST OF IMAGE FILE NAMES ###
+#######################################
+
+# CHANGE TO CORRECT DIRECTORY
+data_dir = "C:/Users/User/Desktop/COOP02/apples/binary_side/" # set data directory 
+
+file_names = [f for f in listdir(data_dir) if isfile(join(data_dir, f))] # create a list of file names
+
+#file_names.remove('.DS_Store') # remove .DS_Store file
+
+file_names.sort() # sort the list of file names
+
+file_names[slice(50)] # check list of file names, can put file_name[slice(50)]
+```
+
+#### Process and Landmarking
+
+-   Read in image in grayscale
+-   Select the contour of the largest object (the leaf)
+-   Interpolate with a high resolution of pseudo-landmarks
+-   Find the bottom and top index point on the high resolution contour
+-   Reset the bottom index to zero
+-   Interpolate each side with desired number of equidistant pseudo-landmarks
+-   Rotate leaves and scale to centimeters
+-   Save pseudo-landmarks scaled to centimeters in an array
+
+##### PARAMETERS AND INDEXING:
+
+-   `high_res_pts` is an arbitrarily high number of points to initially interpolate
+-   `res` is the desired number of points to interpolate on each side of the leaf
+-   The total number of pseudo-landmarks will be `2*res - 1`
+-   The bottom index will be `0`
+-   The top index will be `res-1`
+-   The returned apples in `apple_cm_arr` are scaled in size to centimeters
+
+```{python}
+#| label: Domestic Apple Parameters
+######################
+### SET PARAMETERS ###
+######################
+
+# the number of equidistant points to create
+# an initial high resolution outline of the leaf
+high_res_pts = 1000 
+
+# the ultimate number of equidistant points on each side of the leaf
+# (-1 for the top)
+# the leaf will have res*2-1 pseudo-landmarks
+#################
+#################
+#################
+res = 20 ########
+#################
+#################
+#################
+
+# an array to store pseudo-landmarks
+apple_cm_arr = np.zeros((len(mdata),(res*2)-1,2))
+
+# for each apple . . .
+for lf in range(len(mdata)):
+
+    ###############################
+    ### READ IN GRAYSCALE IMAGE ###
+    ###############################
+
+    curr_image = mdata["file"][lf] # select the current image
+    print(lf, curr_image) # print each leaf in case there are problems later
+    
+    # read in image
+    # convert to grayscale
+    # invert the binary
+    img = cv2.bitwise_not(cv2.cvtColor(cv2.imread(data_dir + curr_image),cv2.COLOR_BGR2GRAY))
+
+    # find contours of binary objects
+    contours, hierarchy = cv2.findContours(img,  
+        cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    ##############################
+    ### SELECT LARGEST CONTOUR ###
+    ##############################
+
+    # ideally there is only one leaf in the image
+    # in the case there are smaller objects
+    # this code selects the largest object (the apple)
+    # if there is one and only one object in the image
+    # then the following code is not necessary
+
+    x_conts = [] # list of lists of contour x vals
+    y_conts = [] # list of lists of contour y vals
+    areas_conts = [] # list of bounding box areas of contours
+    for c in contours: # for each contour
+        x_vals = [] # store x vals for current contour 
+        y_vals = [] # store y vals for current contour
+        for i in range(len(c)): # for each point in current contour
+            x_vals.append(c[i][0][0]) # isolate x val
+            y_vals.append(c[i][0][1]) # isolate y val
+        area = (max(x_vals) - min(x_vals))*(max(y_vals) - min(y_vals)) # calculate bounding box area of contour
+        x_conts.append(x_vals) # append the current contour x vals
+        y_conts.append(y_vals) # append the current contour y vals
+        areas_conts.append(area) # append the current contour bounding box areas
+
+    area_inds = np.flip(np.argsort(areas_conts)) # get indices to sort contours by area
+    sorted_x_conts = np.array(x_conts, dtype=object)[area_inds][0:] # areas sorted largest to smallest, x vals
+    sorted_y_conts = np.array(y_conts, dtype=object)[area_inds][0:] # areas sorted largest to smallest, y vals
+
+    ################################################
+    ### INTERPOLATE HIGH RES NUMBER OF LANDMARKS ###
+    ################################################
+
+    # convert the leaf to high resolution number of landmarks
+    # using high_res_pt value
+    # need to convert arrays of pixel int to floats first
+    high_res_x, high_res_y = interpolation(np.array(sorted_x_conts[0], dtype=np.float32), 
+                                           np.array(sorted_y_conts[0], dtype=np.float32), high_res_pts)
+
+    #################################
+    ### FIND BOTTOM AND TOP INDEX ###
+    #################################
+
+    # get the bottom and top landmark point values
+    bottom_pt = np.array((mdata["bottom_x"][lf], mdata["bottom_y"][lf]))
+    top_pt = np.array((mdata["top_x"][lf], mdata["top_y"][lf]))
+
+    bottom_dists = [] # store distance of each high res point to bottom
+    top_dists = [] # store distance of each high res point to top
+
+    for pt in range(len(high_res_x)): # for each of the high resolution points
+
+        # euclidean distance of the current point from the bottom and top landmark
+        ed_bottom = euclid_dist(bottom_pt[0], bottom_pt[1], high_res_x[pt], high_res_y[pt])
+        ed_top = euclid_dist(top_pt[0], top_pt[1], high_res_x[pt], high_res_y[pt])
+
+        # store distance of current point from bottom/top
+        bottom_dists.append(ed_bottom)
+        top_dists.append(ed_top)
+
+    # get index of bottom and top points
+    bottom_ind = np.argmin(bottom_dists)
+    top_ind = np.argmin(top_dists)
+
+    ##################################
+    ### RESET BOTTOM INDEX TO ZERO ###
+    ##################################
+
+    # reset bottom index position to zero
+    high_res_x = np.concatenate((high_res_x[bottom_ind:],high_res_x[:bottom_ind]))
+    high_res_y = np.concatenate((high_res_y[bottom_ind:],high_res_y[:bottom_ind]))
+
+    # recalculate indices with new indexing
+    top_ind = top_ind-bottom_ind # note: negative index if top_ind<bottom_ind
+    bottom_ind = bottom_ind-bottom_ind
+
+    # create single array for leaf coordinates
+    lf_contour = np.column_stack((high_res_x, high_res_y))
+
+    ##############################################################
+    ### INTERPOLATE EACH SIDE WITH DESIRED NUMBER OF LANDMARKS ###
+    ##############################################################
+
+    # interpolate at desired resolution the left and right sides of the apple
+    left_inter_x, left_inter_y = interpolation(lf_contour[bottom_ind:top_ind+1,0],lf_contour[bottom_ind:top_ind+1,1],res)
+    right_inter_x, right_inter_y = interpolation(lf_contour[top_ind:,0],lf_contour[top_ind:,1],res)
+
+    # the start of the right side and end of the left side
+    # both contain the top landmark
+    # delete the last point on the left side
+    left_inter_x = np.delete(left_inter_x, -1)
+    left_inter_y = np.delete(left_inter_y, -1)
+
+    # BOTTOM OF APPLE IS INDEX 0
+    # TOP INDEX IS RES-1 IF BOTH LEFT & RIGHT POINTS
+    # TOTAL PSEUDOLANDMARKS IS 2*RES-1
+    lf_pts_left = np.column_stack((left_inter_x, left_inter_y))
+    lf_pts_right = np.column_stack((right_inter_x, right_inter_y))
+    lf_pts = np.row_stack((lf_pts_left, lf_pts_right))
+
+    ##########################################################
+    ### ROTATE APPLES UPWARD AND SCALE SIZE TO CENTIMETERS ###
+    ##########################################################
+
+    top_point = lf_pts[res-1,:] # get top point
+    bottom_point = lf_pts[0,:] # get bottom point
+
+    # calculate angle between top. bottom, and an arbitrary reference
+    ang = angle_between(top_point, bottom_point, (bottom_point[0]+1,bottom_point[1]) )
+
+    # rotate points upwards
+    rot_x, rot_y = rotate_points(lf_pts[:,0], lf_pts[:,1], ang) 
+    rot_pts = np.column_stack((rot_x, rot_y))
+    
+    # calculate leaf area in pixels^2
+    lf_area_px2 = poly_area(rot_pts[:,0], rot_pts[:,1])
+    
+    # get px_cm
+    #px_cm = np.sqrt(lf_area_px2/mdata["area"][lf])
+
+    # scale leaf into cm
+    cm_lf = rot_pts/(81.93)
+    
+    # store the leaf scaled into cm into the cm_arr
+    apple_cm_arr[lf,:,:] = cm_lf
+```
+
+<!-- Plot to be taken out for final analysis -->
+
+### Only used for testing
+
+```{python}
+# Plot each leaf and check that it is working
+# (remove this when working with a large number of leaves outside of this example)
+
+plt.figure(figsize=(5,10))
+
+
+for i in range(25):
+    
+    plt.subplot(5,5,i+1)
+    plt.plot(apple_cm_arr[i,:,0], apple_cm_arr[i,:,1], c="k", lw=1)
+    plt.plot([min(apple_cm_arr[i,:,0])-0.1,min(apple_cm_arr[i,:,0])-0.1],
+            [apple_cm_arr[i,0,1], apple_cm_arr[i,0,1]+1], c="k", lw=0.5) # cm scale
+    plt.scatter(apple_cm_arr[i,:,0], apple_cm_arr[i,:,1], c="k", s=4)
+    plt.scatter(apple_cm_arr[i,0,0], apple_cm_arr[i,0,1])
+    plt.scatter(apple_cm_arr[i,res-1,0], apple_cm_arr[i,res-1,1])
+    
+    plt.title(mdata["genotype"][i], fontsize=8)
+    
+    plt.gca().set_aspect("equal")
+    plt.axis("off")
+    
+plt.suptitle(str(res*2-1) + " pseudo-landmarks")
+plt.tight_layout()
+```
