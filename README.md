@@ -1,6 +1,6 @@
 # apple_shape_analysis
 
-#####COOP2902 - Research Assistant (Acadia University)
+<h4>COOP2902 - Research Assistant (Acadia University)</h4>
 
 Apple morphometric analysis work
 Started: May 6th 2024
