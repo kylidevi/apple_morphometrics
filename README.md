@@ -9,3 +9,4 @@ Finished: In progress
 Work done so far:
 1. Landmarking of side images
 2. Creating metadata for analyses
+3. Integrating code to apple dataset
