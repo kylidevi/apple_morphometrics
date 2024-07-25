@@ -485,7 +485,7 @@ mdata["solidity"] = solidity_list
 mdata["asymmetry"] = asymmetry_list
 
 # save output so you don't have to run the code all the time
-#mdata.to_csv("added_data.csv", index = False)
+#mdata.to_csv("apple_metadata_2.csv", index = False)
 ```
 
 <!-- PLEASE INSERT PLOT BELOW -->
@@ -500,10 +500,28 @@ mdata["asymmetry"] = asymmetry_list
 library(tidyverse)
 library(GGally)
 
-apple_data <- read.csv("added_data.csv")
+apple_data <- read.csv("apple_metadata_2.csv")
 apple_data$apple_id <- factor(apple_data$apple_id)
 
-ggpairs(apple_data, columns = 11:15, aes(colour = apple_id, alpha = 0.5), upper = list(continuous = "points"))
+apple_test <- apple_data %>% 
+  group_by(apple_id) %>% 
+  mutate(across(all_of(c(10:14)), ~mean(.x, na.rm = TRUE), .names = "aveg_{col}")) %>% 
+  distinct(apple_id, .keep_all = TRUE)
+
+plot <- ggpairs(apple_test, columns = 26:30, columnLabels = c("width", "length", "area", "solidity", "asymmetry"), aes(colour = apple_id, alpha = 0.5), upper = list(continuous = "points"))
+
+for(i in 1:plot$nrow) {
+  for(j in 1:plot$ncol){
+    if(i == j) {  # Only modify the diagonal plots (density plots)
+      p <- ggplot(apple_data, aes_string(x = names(apple_data)[j + 10], fill = "as.factor(apple_id)")) + 
+        geom_density(alpha = 0.5) + 
+        theme(legend.position = "none")
+      plot[i,j] <- p
+    }
+  }
+}
+
+print(plot)
 ```
 
 <!-- The following sections are the Procrustes Analysis -->
@@ -815,7 +833,7 @@ for lf in range(len(apple_cm_arr)):
     
     leaf_areas_cm.append(poly_area(apple_cm_arr[lf,:,0], apple_cm_arr[lf,:,1]))
     
-mdata["area"] = leaf_areas_cm
+mdata["area_cm"] = leaf_areas_cm
 
 # export this one with the updated area
 mdata.to_csv("apple_metadata_2.csv", index = False)
@@ -833,7 +851,7 @@ plot_length= 20 # plot length in inches
 plot_width= 20 # plot length in inches
 numPC1 = 10 # set number of PC1 intervals
 numPC3 = 5 # set number of PC3 intervals
-hue = "area" # select the factor to color by
+hue = "area_cm" # select the factor to color by
 s = 0.075 # set the scale of the eigenleaves
 lf_col = "lightgray" # color of inverse eigenleaf
 lf_alpha = 0.5 # alpha of inverse eigenleaf
@@ -909,7 +927,7 @@ apple_metadata$apple_id <- as.numeric(apple_metadata$apple_id)
 # combine the apple info to the metadata
 meta <- apple_metadata %>%
   left_join(apple_info) %>% 
-  select(c(2:18, 21:24))
+  select(c(2:20, 22:26))
 
 # save the file
 write.csv(meta, file = "apple_metadata_2.csv")
