@@ -937,6 +937,19 @@ write.csv(meta, file = "apple_metadata_2.csv")
 <!-- Plots that may want to be analyzed: score by genotype, score by size, etc. -->
 
 ```{r}
-#| label: More Plots
+#| label: Pair Plot (by use)
+# load libraries
+library(tidyverse)
+library(GGally)
 
+apple_data <- read.csv("apple_metadata_2.csv")
+apple_data$apple_id <- factor(apple_data$apple_id)
+
+apple_test <- apple_data %>% 
+  filter(use == c("dessert", "cider"))
+
+# plotting for 249 cider apples and 2303 dessert apples
+ggpairs(apple_test, columns = 11:15, aes(colour = use, alpha = 0.35), upper = list(continuous = "points")) +
+  scale_fill_manual(values = c('#2e6b52', '#d98fe3')) +
+  scale_color_manual(values = c('#2e6b52', '#d98fe3'))
 ```
