@@ -1,5 +1,5 @@
 ---
-title: "apple morphometric analysis"
+title: "apple morphometric analysis (side view)"
 format: 
   html:
     fig-format: pdf 
@@ -369,16 +369,16 @@ for lf in range(len(mdata)):
     rot_x, rot_y = rotate_points(lf_pts[:,0], lf_pts[:,1], ang) 
     rot_pts = np.column_stack((rot_x, rot_y))
     
-    # calculate leaf area in pixels^2
+    # calculate apple area in pixels^2
     lf_area_px2 = poly_area(rot_pts[:,0], rot_pts[:,1])
     
     # get px_cm
     #px_cm = np.sqrt(lf_area_px2/mdata["area"][lf])
 
-    # scale leaf into cm
+    # scale apple into cm
     cm_lf = rot_pts/(81.93)
     
-    # store the apple scaled into cm into the cm_arr
+    # store the apple scaled into cm into the apple_cm_arr
     apple_cm_arr[lf,:,:] = cm_lf
 ```
 
@@ -485,7 +485,7 @@ mdata["solidity"] = solidity_list
 mdata["asymmetry"] = asymmetry_list
 
 # save output so you don't have to run the code all the time
-#mdata.to_csv("apple_metadata_2.csv", index = False)
+mdata.to_csv("apple_metadata_2.csv", index = False)
 ```
 
 <!-- PLEASE INSERT PLOT BELOW -->
@@ -510,13 +510,13 @@ apple_test <- apple_data %>%
   distinct(apple_id, .keep_all = TRUE)
 
 # plotting for 549 different apple_id
-plot <- ggpairs(apple_test, columns = 26:30, columnLabels = c("width", "length", "area", "solidity", "asymmetry"), aes(colour = apple_id, alpha = 0.5), upper = list(continuous = "points"))
+plot <- ggpairs(apple_test, columns = 16:20, columnLabels = c("width", "length", "area", "solidity", "asymmetry"), aes(colour = apple_id, alpha = 0.5), upper = list(continuous = "points"))
 
 for(i in 1:plot$nrow) {
   for(j in 1:plot$ncol){
     if(i == j) {  # Only modify the diagonal plots (density plots)
-      p <- ggplot(apple_data, aes_string(x = names(apple_data)[j + 10], fill = "as.factor(apple_id)")) + 
-        geom_density(alpha = 0.5) + 
+      p <- ggplot(apple_data, aes_string(x = names(apple_data)[j + 10])) + 
+        geom_density(alpha = 0.5, fill = 'darkslategray1') + 
         theme(legend.position = "none")
       plot[i,j] <- p
     }
@@ -591,6 +591,7 @@ for i in range(len(pca_all.explained_variance_ratio_)):
 ```
 
 <!-- TRY TO PUT MORE THAN 3 -->
+
 ```{python}
 #| label: Calculate Number of PCs
 #################################################
@@ -823,6 +824,7 @@ plt.title(title)
 ```
 
 <!-- ASK ZOE ABOUT THIS ONE? -->
+
 ```{python}
 #| label: Allometry Analysis
 # To analyze apple size/allometry
@@ -911,6 +913,7 @@ plt.title(title)
 ```
 
 <!-- Update the metadata?-->
+
 ```{r}
 #| label: Updating Metadata
 # load in necessary libraries
@@ -936,6 +939,7 @@ write.csv(meta, file = "apple_metadata_2.csv")
 ```
 
 <!-- Linear Discriminant Analysis to be completed here (can be done in R): -->
+
 <!-- Plots that may want to be analyzed: score by genotype, score by size, etc. -->
 
 ```{r}
