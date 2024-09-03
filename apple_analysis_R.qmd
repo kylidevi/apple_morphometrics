@@ -627,7 +627,6 @@ write_delim(predict, file = "prediction_values.txt")
 ```
 
 
-
 <!-- NOTE: will need to convert datasets that will be used from python to r. This can be done by using the py_to_r function from the reticulate library or import a file directly into R -->
 ```{r}
 #| label: Pair Plot (by apple_id)
@@ -638,38 +637,16 @@ library(tidyverse)
 library(GGally)
 
 #setwd("C:/Users/User/Desktop/COOP02/code/apple_shape")
-apple_data <- read.csv("apple_metadata_0821.csv")
-apple_data$apple_id <- factor(apple_data$apple_id)
+predicted <- read.delim("prediction_values.txt", sep = "")
+apple_data <- read.csv("apple_metadata_avg_0903.csv") %>% 
+  select(2:16)
 
-######## REML adjust
-# but do we want to adjust all the data, or like just the averages 
+all_data <- left_join(apple_data, predicted)
 
-# what if i average it first and then read it in?
-
-
-
-
-apple_test <- apple_data %>% 
-  group_by(apple_id) %>% 
-  mutate(across(all_of(c(10:14)), ~mean(.x, na.rm = TRUE), .names = "aveg_{col}")) %>% 
-  distinct(apple_id, .keep_all = TRUE)
+all_data$apple_id <- factor(all_data$apple_id)
 
 # plotting for 549 different apple_id
-plot <- ggpairs(apple_test, columns = 16:20, columnLabels = c("width", "length", "area", "solidity", "asymmetry"), aes(colour = apple_id, alpha = 0.5), upper = list(continuous = "points"))
-
-#using all the data
-for(i in 1:plot$nrow) {
-  for(j in 1:plot$ncol){
-    if(i == j) {  # Only modify the diagonal plots (density plots)
-      p <- ggplot(apple_data, aes_string(x = names(apple_data)[j + 10])) + 
-        geom_density(alpha = 0.5, fill = 'darkslategray1') + 
-        theme(legend.position = "none")
-      plot[i,j] <- p
-    }
-  }
-}
-
-print(plot)
+ggpairs(all_data, columns = 16:20, columnLabels = c("width", "length", "area", "solidity", "asymmetry"), aes(colour = apple_id, alpha = 0.5), upper = list(continuous = "points"), diag = list(continuous = wrap("densityDiag", fill = "blue")))
 ```
 
 <!-- The following sections are the Procrustes Analysis -->
@@ -768,12 +745,178 @@ mdata["PC5"] = PCs[:,4]
 mdata["PC6"] = PCs[:,5]
 
 # save output with PC, could over write the other one if desired
-mdata.to_csv("apple_metadata_0821.csv", index = False)
+mdata.to_csv("apple_metadata_0823.csv", index = False)
 ```
 ```{r}
-######## adjust
-# do we adjust the whole thing or do we adjust averages
+setwd("C:/Users/User/Desktop/COOP02/code/apple_shape")
+apple_traits <- read.csv("apple_metadata_0823.csv")
+apple_traits <- apple_traits %>% 
+  separate(file, into = c("BW", "nursery_id", "ending"), sep = "_", remove = FALSE) %>% 
+  select(2, 4, 6:24)
 
+apple_traits <- apple_traits %>% 
+  group_by(nursery_id) %>% 
+  mutate(across(all_of(c(10:20)), ~mean(.x, na.rm = TRUE), .names = "{col}"))
+
+write.csv(apple_traits, file = "apple_metadata_avg_0903.csv")
+```
+
+```{r}
+library(lme4)
+library(lsmeans)
+library(lattice)
+library(pbkrtest)
+library(tidyverse)
+
+reml_design <- read.table("C:/Users/User/Desktop/COOP02/code/apple_shape/reml/20161024_ABC_design_grid_zm.txt", header = T)
+
+apple_traits <- read.csv("apple_metadata_avg_0903.csv") %>% 
+  select(2:22)
+
+# Loading the metadata to match the design file
+ph = apple_traits[match(reml_design[,"nursery_id"], apple_traits[,"nursery_id"]),] # Grab phenotype data in correct order
+ph = cbind(reml_design, ph) #append phenotype data to reml tables
+ph = ph[!is.na(ph[,"PC1"]),] # get rid of NAs
+ph$apple_id = as.factor(as.character(ph$apple_id)) # make apple_id a factor
+
+## check for each (will be slightly different)
+length(unique(ph$nursery_id))
+#743 nursery ids 
+length(unique(ph$apple_id))
+#534 unique cultivars (apple ids)
+
+
+### PC1 ---------
+#Run the model
+PC1_reml <- lmer(formula = PC1 ~ apple_id + ( 1 | Block) + ( 1 | Block:rGrid) + ( 1 | Block:cGrid) + ( 1 | Block:cGrid:rGrid), data= ph,  REML = TRUE) #apple_id is fixed effect
+
+#Get the least-square means
+PC1_reml_lsmeans <- lsmeans(PC1_reml , "apple_id")
+PC1_reml_lsmeans_predict <- predict(PC1_reml_lsmeans)
+names(PC1_reml_lsmeans_predict) = levels(ph$apple_id)
+
+# Adding to the data
+predict <- cbind(predict, PC1_reml_lsmeans_predict)
+
+#Compare the predicted ls_means by cultivar to a simple arithmetic mean by cultivar
+mean_vals = aggregate(PC1 ~ apple_id, data = ph, mean)
+plot(mean_vals$PC1, PC1_reml_lsmeans_predict)
+cor.test(mean_vals$PC1, PC1_reml_lsmeans_predict)
+#cor PC1: 0.9983495
+
+
+### PC2 ---------
+#Run the model
+PC2_reml <- lmer(formula = PC2 ~ apple_id + ( 1 | Block) + ( 1 | Block:rGrid) + ( 1 | Block:cGrid) + ( 1 | Block:cGrid:rGrid), data= ph,  REML = TRUE) #apple_id is fixed effect
+
+#Get the least-square means
+PC2_reml_lsmeans <- lsmeans(PC2_reml , "apple_id")
+PC2_reml_lsmeans_predict <- predict(PC2_reml_lsmeans)
+names(PC2_reml_lsmeans_predict) = levels(ph$apple_id)
+
+# Adding to the data
+predict <- cbind(predict, PC2_reml_lsmeans_predict)
+
+#Compare the predicted ls_means by cultivar to a simple arithmetic mean by cultivar
+mean_vals = aggregate(PC2 ~ apple_id, data = ph, mean)
+plot(mean_vals$PC2, PC2_reml_lsmeans_predict)
+cor.test(mean_vals$PC2, PC2_reml_lsmeans_predict)
+#cor PC2: 1
+
+
+### PC3 ---------
+#Run the model
+PC3_reml <- lmer(formula = PC3 ~ apple_id + ( 1 | Block) + ( 1 | Block:rGrid) + ( 1 | Block:cGrid) + ( 1 | Block:cGrid:rGrid), data= ph,  REML = TRUE) #apple_id is fixed effect
+
+#Get the least-square means
+PC3_reml_lsmeans <- lsmeans(PC3_reml , "apple_id")
+PC3_reml_lsmeans_predict <- predict(PC3_reml_lsmeans)
+names(PC3_reml_lsmeans_predict) = levels(ph$apple_id)
+
+# Adding to the data
+predict <- cbind(predict, PC3_reml_lsmeans_predict)
+
+#Compare the predicted ls_means by cultivar to a simple arithmetic mean by cultivar
+mean_vals = aggregate(PC3 ~ apple_id, data = ph, mean)
+plot(mean_vals$PC3, PC3_reml_lsmeans_predict)
+cor.test(mean_vals$PC3, PC3_reml_lsmeans_predict)
+#cor PC3: 1
+
+
+### PC4 ---------
+#Run the model
+PC4_reml <- lmer(formula = PC4 ~ apple_id + ( 1 | Block) + ( 1 | Block:rGrid) + ( 1 | Block:cGrid) + ( 1 | Block:cGrid:rGrid), data= ph,  REML = TRUE) #apple_id is fixed effect
+
+#Get the least-square means
+PC4_reml_lsmeans <- lsmeans(PC4_reml , "apple_id")
+PC4_reml_lsmeans_predict <- predict(PC4_reml_lsmeans)
+names(PC4_reml_lsmeans_predict) = levels(ph$apple_id)
+
+# Adding to the data
+predict <- cbind(predict, PC4_reml_lsmeans_predict)
+
+#Compare the predicted ls_means by cultivar to a simple arithmetic mean by cultivar
+mean_vals = aggregate(PC4 ~ apple_id, data = ph, mean)
+plot(mean_vals$PC4, PC4_reml_lsmeans_predict)
+cor.test(mean_vals$PC4, PC4_reml_lsmeans_predict)
+#cor PC4: 0.9974261
+
+
+### PC5 ---------
+#Run the model
+PC5_reml <- lmer(formula = PC5 ~ apple_id + ( 1 | Block) + ( 1 | Block:rGrid) + ( 1 | Block:cGrid) + ( 1 | Block:cGrid:rGrid), data= ph,  REML = TRUE) #apple_id is fixed effect
+
+#Get the least-square means
+PC5_reml_lsmeans <- lsmeans(PC5_reml , "apple_id")
+PC5_reml_lsmeans_predict <- predict(PC5_reml_lsmeans)
+names(PC5_reml_lsmeans_predict) = levels(ph$apple_id)
+
+# Adding to the data
+predict <- cbind(predict, PC5_reml_lsmeans_predict)
+
+#Compare the predicted ls_means by cultivar to a simple arithmetic mean by cultivar
+mean_vals = aggregate(PC5 ~ apple_id, data = ph, mean)
+plot(mean_vals$PC5, PC5_reml_lsmeans_predict)
+cor.test(mean_vals$PC5, PC5_reml_lsmeans_predict)
+#cor PC5: 0.99651
+
+
+### PC6 ---------
+#Run the model
+PC6_reml <- lmer(formula = PC6 ~ apple_id + ( 1 | Block) + ( 1 | Block:rGrid) + ( 1 | Block:cGrid) + ( 1 | Block:cGrid:rGrid), data= ph,  REML = TRUE) #apple_id is fixed effect
+
+#Get the least-square means
+PC6_reml_lsmeans <- lsmeans(PC6_reml , "apple_id")
+PC6_reml_lsmeans_predict <- predict(PC6_reml_lsmeans)
+names(PC6_reml_lsmeans_predict) = levels(ph$apple_id)
+
+# Adding to the data
+predict <- cbind(predict, PC6_reml_lsmeans_predict)
+
+#Compare the predicted ls_means by cultivar to a simple arithmetic mean by cultivar
+mean_vals = aggregate(PC6 ~ apple_id, data = ph, mean)
+plot(mean_vals$PC6, PC6_reml_lsmeans_predict)
+cor.test(mean_vals$PC6, PC6_reml_lsmeans_predict)
+#cor PC6: 0.9975439
+
+write_delim(predict, file = "prediction_values.txt")
+```
+
+```{r}
+
+predicted <- read.delim("prediction_values.txt", sep = "")
+apple_data <- read.csv("apple_metadata_avg_0903.csv") %>% 
+  select(2:22)
+
+all_data <- left_join(apple_data, predicted)
+
+all_data$apple_id <- factor(all_data$apple_id)
+
+# plotting for 549 different apple_id
+ggpairs(all_data, columns = 22:32, columnLabels = c("width", "length", "area", "solidity", "asymmetry", "PC1", "PC2", "PC3", "PC4", "PC5", "PC6"), aes(colour = apple_id, alpha = 0.5), upper = list(continuous = "points"), diag = list(continuous = wrap("densityDiag", fill = "blue")))
+
+ggsave("pairs_plot2.png", plot = last_plot(), units = "in", width = 15, height = 12)
+write.csv(all_data, file = "apple_metadata_0903.csv")
 ```
 
 
@@ -785,14 +928,16 @@ mdata.to_csv("apple_metadata_0821.csv", index = False)
 ### CREATE EIGEN REPRESENTATIONS OF FIRST 3 PCs ###
 ###################################################
 
+new_mdata = pd.read_csv("apple_metadata_avg_0903.csv")
 
+#### SHOULD THESE NOW BE CALCULATED WITH THE REML ADJUSTED VALUES
 # calculate standard deviations for each PC
-PC1_std = mdata["PC1"].std()
-PC2_std = mdata["PC2"].std()
-PC3_std = mdata["PC3"].std()
-PC4_std = mdata["PC4"].std()
-PC5_std = mdata["PC5"].std()
-PC6_std = mdata["PC6"].std()
+PC1_std = new_mdata["PC1"].std()
+PC2_std = new_mdata["PC2"].std()
+PC3_std = new_mdata["PC3"].std()
+PC4_std = new_mdata["PC4"].std()
+PC5_std = new_mdata["PC5"].std()
+PC6_std = new_mdata["PC6"].std()
 
 
 # create list of lists of PC values to reconstruct
@@ -869,31 +1014,17 @@ Visualize a morphospace and classify apples by the factor of genotype
 
 #### Creating Morphospace
 
-```{python}
-## averaging the data
-averaged = pd.read_csv("apple_metadata_0821.csv")
-averaged = averaged.drop(['Unnamed: 0', 'dataset', 'file', 'px.cm', 'node'], axis = 1)
-
-aveg_subset = averaged.groupby('apple_id').mean()
-aveg_subset2 = aveg_subset.rename_axis('apple_id').reset_index()
-
-aveg_subset2.to_csv("apple_metadata_0821_averages.csv", index = False)
-```
-
 ```{r}
 ### combining averaged data
 library(tidyverse)
 library(readxl)
-avgdata <- read.csv("apple_metadata_0821_averages.csv")
-fulldata <- read.csv("apple_metadata_0821.csv")
-
+## CHANGE THESE DIRECTORIES
+avgdata <- read.csv("apple_metadata_0903.csv")
 dataset <- read_excel("Dataset_S1.xlsx", sheet = "phenotype_data")
 
 combined <- avgdata %>% left_join(dataset, by = 'apple_id')
-full <- fulldata %>% left_join(dataset, by = 'apple_id')
 
-write.csv(combined, file = "apple_metadata_0821_averages.csv", row.names = FALSE)
-write.csv(full, file = "apple_metadata_0821.csv", row.names = FALSE)
+write.csv(combined, file = "apple_metadata_0903.csv", row.names = FALSE)
 ```
 
 ```{python}
@@ -902,14 +1033,14 @@ write.csv(full, file = "apple_metadata_0821.csv", row.names = FALSE)
 ### CREATE MORPHOSPACE ###
 ##########################
 
-averaged = pd.read_csv("apple_metadata_0821_averages.csv")
+averaged = pd.read_csv("apple_metadata_0903.csv")
 
 # set plot parameters
 plot_length= 20 # plot length in inches
 plot_width= 20 # plot length in inches
 numPC1 = 8 # set number of PC1 intervals
 numPC3 = 5 # set number of PC3 intervals
-hue = "species" # select the factor to color by
+hue = "apple_id" # select the factor to color by
 s = 0.06 # set the scale of the eigen apples
 lf_col = "lightgray" # color of inverse eigen apples
 lf_alpha = 0.5 # alpha of inverse eigen apple
@@ -972,14 +1103,103 @@ plt.show()
 ### CREATE MORPHOSPACE ###
 ##########################
 
+averaged = pd.read_csv("apple_metadata_0903.csv")
+
 # set plot parameters
+plot_length= 20 # plot length in inches
+plot_width= 20 # plot length in inches
+numPC1 = 10 # set number of PC1 intervals
+numPC2 = 5 # set number of PC3 intervals
+hue = "apple_id" # select the factor to color by
+s = 0.07 # set the scale of the eigen apples
+lf_col = "lightgray" # color of inverse eigen apples
+lf_alpha = 0.5 # alpha of inverse eigen apple
+pt_size = 20 # size of data points
+pt_linewidth = 0 # lw of data points, set to 0 for no edges
+pt_alpha = 0.6 # alpha of the data points
+ax_label_fs = 12 # font size of the x and y axis titles
+ax_tick_fs = 8 # font size of the axis ticks
+face_col = "white" # color of the plot background
+grid_alpha = 0.5 # set the alpha of the grid
+title = "Procrustean morphospace" # set title
+
+plt.figure(figsize=(plot_length, plot_width))
+
+# note that PC2 is asymmetry and always = 0
+PC1_vals = np.linspace( np.min(PCs[:,0]), np.max(PCs[:,0]), numPC1 ) # create PC intervals
+PC2_vals = np.linspace( np.min(PCs[:,1]), np.max(PCs[:,1]), numPC2 )
+
+for i in PC1_vals: # for each PC1 interval
+    for j in PC2_vals: # for each PC2 interval
+        
+        pc1_val = i # select the current PC1 val
+        pc2_val = j # select the current PC3 val
+
+        # calculate the inverse eigenleaf
+        inv_apple = pca.inverse_transform(np.array([pc1_val,pc2_val,0,0,0,0]))
+        inv_x = inv_apple[0::2] # select just inverse x vals
+        inv_y = inv_apple[1::2] # select just inverse y vals
+        
+        # plot the inverse eigenleaf
+        plt.fill(inv_x*s+pc1_val, inv_y*s+pc2_val, c=lf_col, alpha=lf_alpha)
+   
+# plot the data on top of the morphospace
+sns.scatterplot(data=averaged, x="PC1", y="PC2", hue=hue, s=pt_size, linewidth=pt_linewidth, alpha=pt_alpha)
+
+# legend not helpful in this case
+#plt.legend(bbox_to_anchor=(1.00, 1.02), prop={'size': 8.9}, ncol=2)
+plt.gca().get_legend().remove()
+xlab = "PC1, " + str(round(pca.explained_variance_ratio_[0]*100,1)) + "%"
+ylab = "PC2, " + str(round(pca.explained_variance_ratio_[1]*100,1)) + "%"
+plt.xlabel(xlab, fontsize=ax_label_fs)
+plt.ylabel(ylab, fontsize=ax_label_fs)
+plt.xticks(fontsize=ax_tick_fs)
+plt.yticks(fontsize=ax_tick_fs)
+plt.gca().set_xlim([-0.125,0.09])
+plt.gca().set_ylim([-0.08,0.08])
+plt.gca().set_aspect("equal")
+plt.gca().set_facecolor(face_col)
+plt.grid(alpha=grid_alpha)
+plt.gca().set_axisbelow(True)
+plt.title(title)
+plt.show()
+
+#plt.savefig("morphospace(1_3).png")
+```
+
+```{python}
+#| label: Allometry Analysis
+# To analyze apple size/allometry
+# calculate apple area of each leaf in cm
+# and replace 'area' column values in mdata
+
+apple_areas_cm = []
+
+for lf in range(len(apple_cm_arr)):
+    
+    apple_areas_cm.append(poly_area(apple_cm_arr[lf,:,0], apple_cm_arr[lf,:,1]))
+    
+averaged["area_cm"] = apple_areas_cm
+
+# export this one with the updated area
+averaged.to_csv("apple_metadata_0903.csv", index = False)
+```
+
+```{python}
+#| label: Morphospace 2
+##########################
+### CREATE MORPHOSPACE ###
+##########################
+
+# set plot parameters
+averaged = pd.read_csv("apple_metadata_0903.csv")
 
 plot_length= 20 # plot length in inches
 plot_width= 20 # plot length in inches
-numPC1 = 8 # set number of PC1 intervals
-numPC2 = 6 # set number of PC2 intervals
-hue = "use" # select the factor to color by
-s = 0.075 # set the scale of the eigen apples
+numPC1 = 10 # set number of PC1 intervals
+numPC2 = 5 # set number of PC3 intervals
+hue = "area_cm" # select the factor to color by
+s = 0.07 # set the scale of the eigen apples
 lf_col = "lightgray" # color of inverse eigen apple
 lf_alpha = 0.5 # alpha of inverse eigen apple
 pt_size = 20 # size of data points
@@ -1001,129 +1221,15 @@ for i in PC1_vals: # for each PC1 interval
     for j in PC2_vals: # for each PC2 interval
         
         pc1_val = i # select the current PC1 val
-        pc2_val = j # select the current PC2 val
+        pc2_val = j # select the current PC3 val
 
         # calculate the inverse eigenleaf
-        inv_appple = pca.inverse_transform(np.array([pc1_val,pc2_val,0,0,0,0]))
+        inv_apple = pca.inverse_transform(np.array([pc1_val,pc2_val,0,0,0,0]))
         inv_x = inv_apple[0::2] # select just inverse x vals
         inv_y = inv_apple[1::2] # select just inverse y vals
         
         # plot the inverse eigenleaf
         plt.fill(inv_x*s+pc1_val, inv_y*s+pc2_val, c=lf_col, alpha=lf_alpha)
-   
-# plot the data on top of the morphospace
-sns.scatterplot(data=averaged, x="PC1", y="PC2", hue=hue, s=pt_size, linewidth=pt_linewidth, alpha=pt_alpha)
-
-plt.legend(bbox_to_anchor=(1.00, 1.02), prop={'size': 8.9}, ncol=1)
-#plt.gca().get_legend().remove()
-xlab = "PC1, " + str(round(pca.explained_variance_ratio_[0]*100,1)) + "%"
-ylab = "PC2, " + str(round(pca.explained_variance_ratio_[1]*100,1)) + "%"
-plt.xlabel(xlab, fontsize=ax_label_fs)
-plt.ylabel(ylab, fontsize=ax_label_fs)
-plt.xticks(fontsize=ax_tick_fs)
-plt.yticks(fontsize=ax_tick_fs)
-plt.gca().set_xlim([-0.12,0.09])
-plt.gca().set_ylim([-0.05,0.05])
-plt.gca().set_aspect("equal")
-plt.gca().set_facecolor(face_col)
-plt.grid(alpha=grid_alpha)
-plt.gca().set_axisbelow(True)
-plt.title(title)
-plt.show()
-
-#plt.savefig("morphospace_1-2_area.png")
-```
-
-```{python}
-#| label: Allometry Analysis
-# To analyze apple size/allometry
-# calculate apple area of each leaf in cm
-# and replace 'area' column values in mdata
-
-apple_areas_cm = []
-
-for lf in range(len(apple_cm_arr)):
-    
-    apple_areas_cm.append(poly_area(apple_cm_arr[lf,:,0], apple_cm_arr[lf,:,1]))
-    
-mdata["area_cm"] = apple_areas_cm
-
-# export this one with the updated area
-mdata.to_csv("apple_metadata_0821.csv", index = False)
-```
-
-```{python}
-## averaging the data
-averaged = pd.read_csv("apple_metadata_0821.csv")
-averaged = averaged.drop(['Unnamed: 0', 'file', 'dataset', 'px.cm', 'node'], axis = 1)
-
-aveg_subset = averaged.groupby('apple_id').mean()
-aveg_subset2 = aveg_subset.rename_axis('apple_id').reset_index()
-
-aveg_subset2.to_csv("apple_metadata_0821_averages.csv", index = False)
-```
-
-```{r}
-### combining averaged data
-library(tidyverse)
-library(readxl)
-avgdata <- read.csv("apple_metadata_0821_averages.csv")
-fulldata <- read.csv("apple_metadata_0821.csv")
-
-dataset <- read_excel("Dataset_S1.xlsx", sheet = "phenotype_data")
-
-combined <- avgdata %>% left_join(dataset, by = 'apple_id')
-full <- fulldata %>% left_join(dataset, by = 'apple_id')
-
-write.csv(combined, file = "apple_metadata_0821_averages.csv", row.names = FALSE)
-write.csv(full, file = "apple_metadata_0821.csv", row.names = FALSE)
-```
-
-```{python}
-#| label: Morphospace 2
-##########################
-### CREATE MORPHOSPACE ###
-##########################
-
-# set plot parameters
-averaged = pd.read_csv("apple_metadata_0821_averages.csv")
-
-plot_length= 20 # plot length in inches
-plot_width= 20 # plot length in inches
-numPC1 = 10 # set number of PC1 intervals
-numPC3 = 5 # set number of PC3 intervals
-hue = "area_cm" # select the factor to color by
-s = 0.075 # set the scale of the eigen apples
-lf_col = "lightgray" # color of inverse eigen apple
-lf_alpha = 0.5 # alpha of inverse eigen apple
-pt_size = 20 # size of data points
-pt_linewidth = 0 # lw of data points, set to 0 for no edges
-pt_alpha = 0.6 # alpha of the data points
-ax_label_fs = 12 # font size of the x and y axis titles
-ax_tick_fs = 8 # font size of the axis ticks
-face_col = "white" # color of the plot background
-grid_alpha = 0.5 # set the alpha of the grid
-title = "Procrustean morphospace" # set title
-
-plt.figure(figsize=(plot_length, plot_width))
-
-# note that PC2 is asymmetry and always = 0
-PC1_vals = np.linspace( np.min(PCs[:,0]), np.max(PCs[:,0]), numPC1 ) # create PC intervals
-PC3_vals = np.linspace( np.min(PCs[:,2]), np.max(PCs[:,2]), numPC3 )
-
-for i in PC1_vals: # for each PC1 interval
-    for j in PC3_vals: # for each PC2 interval
-        
-        pc1_val = i # select the current PC1 val
-        pc3_val = j # select the current PC3 val
-
-        # calculate the inverse eigenleaf
-        inv_apple = pca.inverse_transform(np.array([pc1_val,0,pc3_val,0,0,0]))
-        inv_x = inv_apple[0::2] # select just inverse x vals
-        inv_y = inv_apple[1::2] # select just inverse y vals
-        
-        # plot the inverse eigenleaf
-        plt.fill(inv_x*s+pc1_val, inv_y*s+pc3_val, c=lf_col, alpha=lf_alpha)
    
 # plot the data on top of the morphospace
 sns.scatterplot(data=averaged, 
@@ -1137,11 +1243,13 @@ sns.scatterplot(data=averaged,
 
 #plt.legend(bbox_to_anchor=(1.00, 1.02), prop={'size': 8.9})
 xlab = "PC1, " + str(round(pca.explained_variance_ratio_[0]*100,1)) + "%"
-ylab = "PC3, " + str(round(pca.explained_variance_ratio_[2]*100,1)) + "%"
+ylab = "PC2, " + str(round(pca.explained_variance_ratio_[1]*100,1)) + "%"
 plt.xlabel(xlab, fontsize=ax_label_fs)
 plt.ylabel(ylab, fontsize=ax_label_fs)
 plt.xticks(fontsize=ax_tick_fs)
 plt.yticks(fontsize=ax_tick_fs)
+plt.gca().set_xlim([-0.125,0.09])
+plt.gca().set_ylim([-0.08,0.08])
 plt.gca().set_aspect("equal")
 plt.gca().set_facecolor(face_col)
 plt.grid(alpha=grid_alpha)
@@ -1154,7 +1262,7 @@ plt.show()
 
 <!-- Plots that may want to be analyzed: score by genotype, score by size, etc. -->
 
-```{r}
+<!--```{r}
 #| label: Pair Plot (by use)
 # load libraries
 library(tidyverse)
@@ -1170,17 +1278,4 @@ apple_test <- apple_data %>%
 ggpairs(apple_test, columns = 11:15, aes(colour = use, alpha = 0.35), upper = list(continuous = "points")) +
   scale_fill_manual(values = c('#2e6b52', '#d98fe3')) +
   scale_color_manual(values = c('#2e6b52', '#d98fe3'))
-```
-
-
-```{r}
-library(GGally)
-library(tidyverse)
-
-apple_metadata <- read.csv("apple_metadata_0821_averages.csv")
-apple_metadata$apple_id <- factor(apple_metadata$apple_id)
-
-plot2 <- ggpairs(apple_metadata, columns = 6:16, aes(colour = apple_id, alpha = 0.35), upper = list(continuous = "points"))
-
-ggsave("density_plot.jpg", plot = plot2, width = 15, height = 10, units = "in")
-```
+```-->
