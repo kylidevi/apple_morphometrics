@@ -1,10 +1,10 @@
 # apple_shape_analysis
 <h3>Imaging Analysis</h3>
-<h4>COOP 2902 - Research Assistant</h4>
+<h4>COOP 2902/3902 - Research Assistant</h4>
 <h5>Acadia University, Dr. Zoë Migicovsky<br>Kylie DeViller - 100162298</h5>
 <h6>Started: May 6th 2024</h6>
 
-<p>The code and files here are provided by the Migicovsky Lab (from Dan Chitwood) for the image analysis of apple shape and size. The python code given is being transferred into quarto to be able to integrate the analysis and plotting in R.</p>
+<p>The code and files here are provided by the Migicovsky Lab (from Dr. Dan Chitwood) for the image analysis of apple shape and size. The python code given is being transferred into quarto to be able to integrate the analysis and plotting in R.</p>
 
 <p>This analysis uses six different python packages and initially only a few R libraries (subject to change)</p>
 <h5>Python packages</h5>
@@ -24,6 +24,8 @@
   <li>GGally</li>
   <li>dplyr</li>
   <li>readxl</li>
+  <li>MASS</li>
+  <li>reshape2</li>
 </ul>
 
 
