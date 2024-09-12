@@ -6,7 +6,7 @@
 
 <p>The code and files here are provided by the Migicovsky Lab (from Dr. Dan Chitwood) for the image analysis of apple shape and size. The python code given is being transferred into quarto to be able to integrate the analysis and plotting in R.</p>
 
-<p>This analysis uses six different python packages and initially only a few R libraries (subject to change)</p>
+<p>This analysis uses six different python packages and seven R libraries (subject to change)</p>
 <h5>Python packages</h5>
 <ul>
   <li>opencv-python</li>
