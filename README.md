@@ -1,4 +1,4 @@
-# apple_shape_analysis
+# apple morphometrics
 <h3>Imaging Analysis</h3>
 <h4>COOP 2902/3902 - Research Assistant</h4>
 <h5>Acadia University, Dr. Zoë Migicovsky<br>Kylie DeViller - 100162298</h5>
